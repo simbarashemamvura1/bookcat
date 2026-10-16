@@ -3,6 +3,45 @@
 Decisions made during the build that change or extend the specs. Newest first.
 When a decision here affects the roles matrix, MVP scope, or screen inventory,
 update that doc and link back here.
+## 2026-10-15 — Fees are absorbed by the organizer and computed per ticket
+
+- The buyer pays the ticket price only. The Bookcat fee (flat + 2.5%) and the 3%
+  processing fee are deducted from the organizer's sales. Matches the Financial
+  Report example math and the CAD 500 Minimum Charge being organizer-side.
+  Resolves open items round 2, 1.1.
+- Fees are computed per ticket on the price actually paid (after coupon), in integer
+  cents and basis points, rounded half up. Order totals are always the sum of ticket
+  rows, so reports reconcile exactly.
+- Each ticket stores its own money snapshot (list, discount, paid, both fees), so
+  later fee overrides never rewrite history.
+- Comp tickets carry only the flat fee and no processing fee. Fully free events carry
+  zero rates, so all fees are 0.
+- A paid ticket fully discounted to 0 by a coupon still carries the flat fee, same as a
+  comp ticket. Confirm or change.
+- The CAD 500 Minimum Charge is applied per event at settlement time (the greater of
+  the summed fees and the minimum), not per ticket.
+
+## 2026-10-15 — Coupons apply per ticket
+
+- A flat coupon takes its amount off EACH ticket (never more than the ticket's price);
+  a percent coupon is a percentage of each ticket. Resolves round 2, 6.4.
+- One-time coupons are forced to a single redemption. Redemptions are claimed with one
+  atomic UPDATE so two buyers cannot both use the last one. A failed payment or expired
+  hold must release the claim.
+
+## 2026-10-15 — Guest orders link to a Club Member by verified email
+
+- Every order keeps the buyer's email (lowercased). When a member verifies their email,
+  their past guest purchase orders with that email are linked to the account. Resolves
+  round 2, 6.3.
+- Verification is required before linking. Comp orders are never linked.
+
+## 2026-10-15 — Double-booking is blocked in the database, not only in Redis
+
+- A partial unique index allows at most one valid ticket per event seat. Redis holds
+  reduce contention; this index is the guarantee. A refunded ticket frees the seat.
+- Tickets carry an unguessable token (what the QR encodes). It also makes a no-account
+  "your ticket" link possible for Additional Attendees (round 2, 6.1) with no extra schema.
 
 ## 2026-10-15 — Event lifecycle is stored as independent gates
 
