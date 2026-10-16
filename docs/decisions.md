@@ -4,6 +4,36 @@ Decisions made during the build that change or extend the specs. Newest first.
 When a decision here affects the roles matrix, MVP scope, or screen inventory,
 update that doc and link back here.
 
+## 2026-10-15 — Event lifecycle is stored as independent gates
+
+- `review_status` (draft | submitted | approved | rejected) is the Approve gate.
+- `creation_fee_paid_at` is the fee gate. Fully free events (`is_free`) skip it.
+- `activated_at` is the Admin Activate switch. Clearing it later hides the event and
+  stops sales without touching the content approval.
+- `made_public_at` and `made_bookable_at` are the organizer's two toggles.
+- Purchasable = bookable toggle on, `sales_status` open, and every gate above still true.
+  The gates are re-checked on every request, never cached on the event.
+- `frozen_by_type` (organizer | admin) records who froze the event. Only an admin
+  freeze blocks the organizer from reactivating. Also answers the open question about
+  showing the organizer who froze it.
+
+## 2026-10-15 — Event fee terms are copied, not referenced
+
+- Each event gets its own concrete copy of the fee schedule at creation. Later changes
+  to platform defaults never alter an existing event's deal.
+- Fully free events get zero fees across the board.
+- Only CAD has a fee schedule so far. USD events cannot be created until the USD
+  fee question (open items round 2, 1.2) is decided.
+
+## 2026-10-15 — Custom floor plans: seats are snapshotted when the plan is ready
+
+- A custom plan has no seats until the Bookcat team builds it, so its event's seat
+  snapshot (and therefore seat pricing, #28) can only happen after "Mark floor plan
+  ready". Library templates snapshot immediately.
+- Doc fix needed: screen inventory #41 says Approve happens "before any fee payment".
+  #24, #42, the matrix (note 6) and the MVP flow all put the fee at creation, before
+  submission. The schema follows the latter.
+
 ## 2026-10-15 — Seated-first v1, standing admission left open as an organizer option
 
 - v1 ships seated-only: every ticket is one specific seat.

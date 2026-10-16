@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
         if (app()->environment('local')) {
             $this->call(SuperAdminSeeder::class);
             $this->call(DemoFloorPlanSeeder::class);
+            $this->call(DemoEventSeeder::class);
         }
     }
 }
