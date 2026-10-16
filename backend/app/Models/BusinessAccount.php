@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -32,6 +33,11 @@ class BusinessAccount extends Authenticatable
     {
         return $this->belongsToMany(Permission::class, 'admin_permission_grants', 'admin_id', 'permission_id')
             ->withPivot('granted_by', 'granted_at');
+    }
+
+    public function organizer(): HasOne
+    {
+        return $this->hasOne(Organizer::class);
     }
 
     public function isSuperAdmin(): bool
