@@ -16,8 +16,8 @@ return [
     */
 
     'defaults' => [
-        'guard' => env('AUTH_GUARD', 'web'),
-        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
+    'guard' => 'attendee',
+    'passwords' => 'attendee_accounts',
     ],
 
     /*
@@ -37,12 +37,16 @@ return [
     |
     */
 
-    'guards' => [
-        'web' => [
-            'driver' => 'session',
-            'provider' => 'users',
-        ],
+'guards' => [
+    'attendee' => [
+        'driver' => 'session',
+        'provider' => 'attendee_accounts',
     ],
+    'business' => [
+        'driver' => 'session',
+        'provider' => 'business_accounts',
+    ],
+],
 
     /*
     |--------------------------------------------------------------------------
@@ -61,17 +65,16 @@ return [
     |
     */
 
-    'providers' => [
-        'users' => [
-            'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', User::class),
-        ],
-
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+'providers' => [
+    'attendee_accounts' => [
+        'driver' => 'eloquent',
+        'model' => App\Models\AttendeeAccount::class,
     ],
+    'business_accounts' => [
+        'driver' => 'eloquent',
+        'model' => App\Models\BusinessAccount::class,
+    ],
+],
 
     /*
     |--------------------------------------------------------------------------
@@ -92,14 +95,20 @@ return [
     |
     */
 
-    'passwords' => [
-        'users' => [
-            'provider' => 'users',
-            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
-            'expire' => 60,
-            'throttle' => 60,
-        ],
+'passwords' => [
+    'attendee_accounts' => [
+        'provider' => 'attendee_accounts',
+        'table' => 'password_reset_tokens',
+        'expire' => 60,
+        'throttle' => 60,
     ],
+    'business_accounts' => [
+        'provider' => 'business_accounts',
+        'table' => 'password_reset_tokens',
+        'expire' => 60,
+        'throttle' => 60,
+    ],
+],
 
     /*
     |--------------------------------------------------------------------------

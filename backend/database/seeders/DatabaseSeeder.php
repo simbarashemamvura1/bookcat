@@ -9,11 +9,13 @@ class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
 
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
         $this->call(PermissionSeeder::class);
+
+        // Local development only. Never seed a known password in production.
+        if (app()->environment('local')) {
+            $this->call(SuperAdminSeeder::class);
+        }
     }
 }
