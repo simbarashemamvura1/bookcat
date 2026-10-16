@@ -13,9 +13,10 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(PermissionSeeder::class);
 
-        // Local development only. Never seed a known password in production.
+        // Local development only. Never seed known passwords or demo data in production.
         if (app()->environment('local')) {
             $this->call(SuperAdminSeeder::class);
+            $this->call(DemoFloorPlanSeeder::class);
         }
     }
 }
