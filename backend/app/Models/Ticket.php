@@ -11,7 +11,11 @@ class Ticket extends Model
     public const KIND_PAID = 'paid';
     public const KIND_COMP = 'comp';
 
+    // pending = created at checkout, not yet paid. Only 'valid' tickets own a seat
+    // (the partial unique index) and only 'valid' tickets may ever be delivered.
+    public const STATUS_PENDING = 'pending';
     public const STATUS_VALID = 'valid';
+    public const STATUS_CANCELLED = 'cancelled';
     public const STATUS_REFUNDED = 'refunded';
 
     public const ADMISSION_SEATED = 'seated';

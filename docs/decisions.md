@@ -137,3 +137,30 @@ update that doc and link back here.
   client-side without any expiry event.
 - Standing areas, if added later, use a counter in the same namespace
   (bookcat:{event12}:area:KEY), as already decided.
+
+  ## 2026-10-17 — Checkout: pending order at Pay, sale committed on payment success
+
+- Pressing Pay creates a pending order and pending tickets with the money snapshot (list,
+  discount, paid, fees). Seats are not sold and the cart is locked. The sale is committed
+  only when the payment provider reports success (the webhook).
+- One pending order per cart, enforced by a partial unique index on the hashed cart token
+  (the raw token is never stored). Pressing Pay twice returns the same order. To change
+  anything, abort first.
+- At confirmation the database decides: tickets flip to valid inside one transaction and the
+  partial unique index on tickets is the arbiter. Money arriving for an expired or cancelled
+  order is honored if the seats are still free, and otherwise refunded automatically. The
+  first valid payment wins a seat, even over a buyer currently selecting it.
+- A refund is queued as refund_pending in the same transaction as the decision, then sent to
+  the provider with a fixed idempotency key. checkout:housekeeping retries stuck refunds and
+  cancels pending orders past their window. It must run every minute in production.
+- Coupons are claimed atomically when Pay is pressed and given back when the order is
+  cancelled, expires or the payment fails. An honored late payment claims it again, best effort.
+- A fully discounted order (total 0) skips payment and completes immediately. Its tickets are
+  still paid-kind and carry the flat fee (confirm).
+- Pending, cancelled and refunded tickets never own a seat and are never delivered; reports
+  must count only valid tickets.
+- Payments go through a provider interface. The fake provider is for local development and
+  the app refuses to use it in production.
+- The webhook path cannot release the buyer's Redis cart (only a hash of the token is
+  stored). The locks expire on their own within the payment grace, and sold seats are
+  excluded by the database check. The client calls release when it sees the order paid.

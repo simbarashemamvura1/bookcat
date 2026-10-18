@@ -27,4 +27,9 @@ return [
         'payment_grace_minutes' => 5, // time guaranteed once the buyer presses Pay
         'max_seats' => 8,             // per cart (the spec is silent, so this is my default)
     ],
+
+    // 'fake' is for local development only; the app refuses to use it in production.
+    'payments' => [
+        'driver' => env('PAYMENTS_DRIVER', 'fake'),
+    ],
 ];

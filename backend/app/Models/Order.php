@@ -23,7 +23,10 @@ class Order extends Model
 
     protected function casts(): array
     {
-        return ['paid_at' => 'datetime'];
+        return [
+            'paid_at' => 'datetime',
+            'expires_at' => 'datetime',
+        ];
     }
 
     protected static function booted(): void
@@ -71,6 +74,11 @@ class Order extends Model
     public function tickets(): HasMany
     {
         return $this->hasMany(Ticket::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
     }
 
     /** Totals always come from the tickets, so an order can never disagree with its own lines. */
