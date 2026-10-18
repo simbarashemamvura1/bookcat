@@ -116,3 +116,24 @@ update that doc and link back here.
 - Negotiated terms (Bookcat fee, processing fee, Minimum Charge, reserve, payout
   timing) are stored per event, not on the organizer record.
 - Matches the roles matrix wording and the Admin Financial Report screen (#46b).
+## 2026-10-17 — Seat holds are carts, locked per seat in Redis
+
+- Selecting a seat holds it immediately. The hold timer starts at the first seat and is
+  NOT reset by adding seats, so nobody can hold seats indefinitely. Window comes from
+  config, clamped to the 10-20 minute band (Platform Settings will override it later).
+- A multi-seat request is all or nothing, done in one Redis script.
+- Locks are taken first, then the database is checked (sold / blocked / unpriced). A sale
+  commits to Postgres before its hold is released, so a sold seat can never be re-held.
+  The partial unique index on tickets remains the final guarantee if Redis is lost.
+- Pressing Pay locks the cart (no seat changes) and guarantees at least 5 minutes from that
+  moment, once. Resolves round 2, 4.2. The order's seat list is read from the cart, never
+  from the client. If a late payment confirmation finds the seat gone, the order must fail
+  and the payment be refunded automatically (to build with checkout).
+- A freeze or deactivation blocks new selections and starting payment; a cart already
+  paying keeps its seats and may finish.
+- Max 8 seats per cart (spec was silent).
+- Redis keys use a per-event hash tag, e.g. bookcat:{event12}:seat:ORCH-A-1, and a held
+  index (sorted set seat => expiry) so the seat map can show holds and expire them
+  client-side without any expiry event.
+- Standing areas, if added later, use a counter in the same namespace
+  (bookcat:{event12}:area:KEY), as already decided.

@@ -16,4 +16,15 @@ return [
             'payout_delay_business_days' => 3,
         ],
     ],
+
+    // Seat holds. Minutes may be decimals so tests can use seconds.
+    // The window is clamped to the 10-20 minute band from the MVP scope;
+    // Platform Settings (#46a) will later override 'minutes' from the database.
+    'holds' => [
+        'minutes' => 15,
+        'min_minutes' => 10,
+        'max_minutes' => 20,
+        'payment_grace_minutes' => 5, // time guaranteed once the buyer presses Pay
+        'max_seats' => 8,             // per cart (the spec is silent, so this is my default)
+    ],
 ];
