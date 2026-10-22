@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import { api, ApiError, type CartState, type CheckoutResponse, type EventInfo, type Seat } from '@/lib/api';
 import { describeError, fieldErrors } from '@/lib/messages';
 import { formatCountdown, formatMoney, prettySeatKey } from '@/lib/format';
+import { connectLive, type SeatChange, type SeatMessage } from '@/lib/live';
 import SeatMap from '@/components/SeatMap';
 import DetailsForm, { type Details } from '@/components/DetailsForm';
 
 const EMPTY_CART: CartState = { state: 'none', seats: [], remainingMs: null, expiresAtMs: null };
-const POLL_MS = 4000;
+const POLL_FALLBACK_MS = 4000; // while the live connection is down
+const POLL_LIVE_MS = 20000; // a safety net while it is up
 const MAX_SEATS = 8;
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
@@ -37,6 +39,7 @@ export default function EventShop({ initialEvent }: { initialEvent: EventInfo })
   const [event, setEvent] = useState(initialEvent);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [live, setLive] = useState(false);
   const [cart, setCart] = useState<CartState>(EMPTY_CART);
   const [offset, setOffset] = useState(0); // server clock minus this browser's clock
   const [now, setNow] = useState(0);
@@ -50,6 +53,8 @@ export default function EventShop({ initialEvent }: { initialEvent: EventInfo })
   const [checkout, setCheckout] = useState<CheckoutResponse | null>(null);
 
   const cartRef = useRef(cart);
+  const pendingRef = useRef<string[]>([]); // seats this browser is changing right now
+  const lastAt = useRef(new Map<string, number>()); // newest live message applied, per seat
   const gen = useRef(0); // bumped by every change, so a slow poll can never overwrite a newer answer
   const lastExpiryCheck = useRef(0);
 
@@ -96,7 +101,36 @@ export default function EventShop({ initialEvent }: { initialEvent: EventInfo })
     }
   }, [slug, applyCart]);
 
-  // Poll the seat map while the tab is visible.
+  // A live message from the server: another buyer took, released or bought some seats.
+  const applyMessage = useCallback((message: SeatMessage) => {
+    // Our own seats and any seat we are changing right now are already handled by our own requests.
+    const skip = new Set([...cartRef.current.seats, ...pendingRef.current]);
+    const fresh = new Map<string, SeatChange>();
+
+    for (const change of message.changes) {
+      if (skip.has(change.key)) continue;
+      if ((lastAt.current.get(change.key) ?? 0) > message.at) continue; // an older message arriving late
+
+      lastAt.current.set(change.key, message.at);
+      fresh.set(change.key, change);
+    }
+
+    if (fresh.size === 0) return;
+
+    setSeats((prev) =>
+      prev.map((seat) => {
+        const change = fresh.get(seat.key);
+
+        return change ? { ...seat, state: change.state, heldUntilMs: change.heldUntilMs } : seat;
+      }),
+    );
+  }, []);
+
+  // The live connection. If it is not set up or drops, polling takes over.
+  useEffect(() => connectLive({ slug, onMessage: applyMessage, onConnection: setLive }), [slug, applyMessage]);
+
+  // Poll the seat map while the tab is visible. Live updates make this a safety net, so it slows down
+  // while the live connection is up. Reconnecting restarts it, which also catches anything missed.
   useEffect(() => {
     const tick = async () => {
       if (document.visibilityState !== 'visible') return;
@@ -109,7 +143,7 @@ export default function EventShop({ initialEvent }: { initialEvent: EventInfo })
     };
 
     void tick();
-    const id = setInterval(tick, POLL_MS);
+    const id = setInterval(tick, live ? POLL_LIVE_MS : POLL_FALLBACK_MS);
     const onVisible = () => {
       if (document.visibilityState === 'visible') void tick();
     };
@@ -120,7 +154,7 @@ export default function EventShop({ initialEvent }: { initialEvent: EventInfo })
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [loadSeats]);
+  }, [loadSeats, live]);
 
   // Keep the sale state fresh (paused, sold out) without reloading the page.
   useEffect(() => {
@@ -182,13 +216,16 @@ export default function EventShop({ initialEvent }: { initialEvent: EventInfo })
   const subtotal = cart.seats.reduce((sum, key) => sum + (byKey.get(key)?.priceCents ?? 0), 0);
 
   const toggleSeat = async (seat: Seat) => {
-    if (pending.includes(seat.key)) return;
+    if (pendingRef.current.includes(seat.key)) return;
 
     if (cart.state === 'paying') {
       setNotice('Your seats are locked while you pay. Go back to change them.');
       return;
     }
 
+    // Updated straight away (not after the next render), so a live message for this seat that
+    // arrives before our own answer does is ignored.
+    pendingRef.current = [...pendingRef.current, seat.key];
     setPending((p) => [...p, seat.key]);
     setNotice(null);
     gen.current++;
@@ -199,6 +236,7 @@ export default function EventShop({ initialEvent }: { initialEvent: EventInfo })
     } catch (e) {
       fail(e);
     } finally {
+      pendingRef.current = pendingRef.current.filter((k) => k !== seat.key);
       setPending((p) => p.filter((k) => k !== seat.key));
       void loadSeats().catch(() => {});
     }
@@ -376,6 +414,12 @@ export default function EventShop({ initialEvent }: { initialEvent: EventInfo })
           <SeatMap seats={displaySeats} currency={event.currency} pendingKeys={pending} locked={locked} onToggle={toggleSeat} />
         ) : (
           <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center text-sm text-neutral-500">Loading seats…</div>
+        )}
+
+        {loaded && (
+          <p className="mt-2 text-xs text-neutral-500">
+            {live ? 'Seat availability is updating live.' : 'Seat availability refreshes every few seconds.'}
+          </p>
         )}
       </section>
 

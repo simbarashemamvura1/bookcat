@@ -164,3 +164,29 @@ update that doc and link back here.
 - The webhook path cannot release the buyer's Redis cart (only a hash of the token is
   stored). The locks expire on their own within the payment grace, and sold seats are
   excluded by the database check. The client calls release when it sees the order paid.
+
+  ## 2026-10-21 — Live seat updates (Reverb)
+
+- Each event has a public channel named event.<slug>. A message lists changed seats with
+  state held / available / unavailable and, for held, when the hold ends (Redis clock, ms).
+  It carries nothing about the buyer: no cart token, email or order.
+- Announced: seats taken, seats released, seats sold (or blocked), and an extended hold when
+  a buyer presses Pay. Hold expiry is not announced: browsers expire holds themselves using
+  the Redis clock offset.
+- Sales are announced only after their database transaction commits (DB::afterCommit), so a
+  rolled-back sale is never broadcast. Releasing a cart only announces seats that are really
+  free in the database, because carts are released right after a sale.
+- A broadcast failure is caught and logged. It never fails a hold or a sale.
+- Messages carry a server timestamp. A browser ignores a message older than one it already
+  applied for the same seat. Polling stays as the safety net: every 4 seconds while the
+  live connection is down, every 20 seconds while it is up, and an immediate refresh on
+  reconnect.
+- The browser ignores live messages for its own cart and for seats it is changing right now.
+- The frontend uses pusher-js directly. Laravel Echo comes in with private channels (the
+  organizer and admin dashboards).
+- Only the Reverb app KEY goes to the browser. The secret stays on the server.
+- Before production: run Reverb under a process supervisor, enable scaling across servers
+  (REVERB_SCALING_ENABLED, uses Redis), restrict allowed_origins in config/reverb.php (it is
+  open for local development), serve it over TLS, and raise the open-file limit.
+- Still to announce when built: refunds that free a seat again, organizer seat blocks, and
+  sales state changes (freeze, sold out). Each one is a single call on SeatBroadcaster.
