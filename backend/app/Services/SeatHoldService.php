@@ -10,6 +10,10 @@ use InvalidArgumentException;
 
 class SeatHoldService
 {
+    public function __construct(private readonly SeatBroadcaster $broadcaster)
+    {
+    }
+
     /** A fresh cart token. The API layer keeps it in an httpOnly session cookie, never in the URL. */
     public function newToken(): string
     {
@@ -68,7 +72,15 @@ class SeatHoldService
             return HoldResult::fail('seats_not_sellable', $notSellable);
         }
 
-        return $this->status($event, $token);
+        $state = $this->status($event, $token);
+
+        // Tell other viewers about the seats this call newly took. Seats already in the cart are not news.
+        $added = array_values(array_diff($state->seats, $before));
+        if ($added !== []) {
+            $this->broadcaster->held($event, $added, (int) $state->expiresAtMs);
+        }
+
+        return $state;
     }
 
     /** Release specific seats (the buyer un-clicked them). Refused while payment is in progress. */
@@ -84,13 +96,18 @@ class SeatHoldService
             return HoldResult::fail('empty');
         }
 
+        $before = $this->status($event, $token)->seats;
+
         $reply = $this->releaseSeats($event, $token, $seatKeys, false);
 
         if ((int) ($reply[0] ?? 0) === -1) {
             return HoldResult::fail('cart_locked');
         }
 
-        return $this->status($event, $token);
+        $state = $this->status($event, $token);
+        $this->announceReleased($event, array_diff($before, $state->seats));
+
+        return $state;
     }
 
     /** The current cart: seats, state and how long is left. state 'none' means no live cart. */
@@ -128,9 +145,19 @@ class SeatHoldService
         }
 
         $reply = $this->run(SeatHoldScripts::BEGIN_PAYMENT, $event, $token, $current->seats, [$token, $this->graceMs()]);
+        $code = (int) ($reply[0] ?? 0);
 
-        return match ((int) ($reply[0] ?? 0)) {
-            1 => $this->status($event, $token),
+        if ($code === 1) {
+            $state = $this->status($event, $token);
+
+            // The hold may have just been extended: other viewers need the new end time, or they
+            // would see these seats come free while the buyer is still paying.
+            $this->broadcaster->held($event, $state->seats, (int) $state->expiresAtMs);
+
+            return $state;
+        }
+
+        return match ($code) {
             -3 => HoldResult::fail('expired'),
             -4 => HoldResult::fail('cart_changed'),
             -5 => HoldResult::fail('seat_lost'),
@@ -158,6 +185,7 @@ class SeatHoldService
 
         if ($seats !== []) {
             $this->releaseSeats($event, $token, $seats, true);
+            $this->announceReleased($event, $seats);
         }
     }
 
@@ -189,6 +217,27 @@ class SeatHoldService
     private function releaseSeats(Event $event, string $token, array $seatKeys, bool $allowPaying): array
     {
         return $this->run(SeatHoldScripts::DESELECT, $event, $token, $seatKeys, [$token, $allowPaying ? '1' : '0']);
+    }
+
+    /**
+     * Tell other viewers these seats are free again, but only the ones that really are. A cart is
+     * also released right after a sale, and sold seats must stay marked as taken.
+     */
+    private function announceReleased(Event $event, array $seatKeys): void
+    {
+        $seatKeys = array_values($seatKeys);
+
+        if ($seatKeys === []) {
+            return;
+        }
+
+        $free = $event->seats()
+            ->whereIn('seat_key', $seatKeys)
+            ->where('status', EventSeat::STATUS_AVAILABLE)
+            ->pluck('seat_key')
+            ->all();
+
+        $this->broadcaster->available($event, $free);
     }
 
     /** Seats that cannot be sold right now: sold, blocked by the organizer, or not priced yet. */

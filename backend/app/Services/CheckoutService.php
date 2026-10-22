@@ -21,6 +21,7 @@ class CheckoutService
     public function __construct(
         private readonly SeatHoldService $holds,
         private readonly PaymentProvider $provider,
+        private readonly SeatBroadcaster $broadcaster,
     ) {
     }
 
@@ -354,6 +355,9 @@ class CheckoutService
                 $locked->tickets()->whereIn('id', $tickets->pluck('id'))->update(['status' => Ticket::STATUS_VALID]);
                 EventSeat::whereIn('id', $seatIds)->update(['status' => EventSeat::STATUS_SOLD]);
                 $locked->forceFill(['status' => Order::STATUS_PAID, 'paid_at' => now()])->save();
+
+                // Announced only after the whole transaction commits (see SeatBroadcaster).
+                $this->broadcaster->unavailable($locked->event, $seats->pluck('seat_key')->all());
 
                 return true;
             });
