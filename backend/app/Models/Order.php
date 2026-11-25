@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Jobs\SendOrderTickets;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Order extends Model
 {
@@ -33,6 +35,15 @@ class Order extends Model
     {
         static::creating(function (Order $order) {
             $order->reference ??= self::newReference();
+        });
+
+        // A sale is committed the moment an order becomes paid, whichever code path does it
+        // (checkout, a late payment, a free order, later comp orders). The email job is queued
+        // only after the surrounding transaction commits, so a rolled-back sale never sends tickets.
+        static::saved(function (Order $order) {
+            if ($order->status === self::STATUS_PAID && ($order->wasRecentlyCreated || $order->wasChanged('status'))) {
+                DB::afterCommit(fn () => SendOrderTickets::dispatch($order->id));
+            }
         });
     }
 

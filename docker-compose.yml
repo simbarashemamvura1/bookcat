@@ -21,6 +21,15 @@ services:
     volumes:
       - bookcat_redis_data:/data
 
+  # Dev-only inbox: catches every email the app sends. SMTP on 1025, web inbox on 8025.
+  mailpit:
+    image: axllent/mailpit
+    container_name: bookcat_mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   bookcat_postgres_data:
   bookcat_redis_data:
