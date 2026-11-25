@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: bookcat_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bookcat
+      POSTGRES_USER: bookcat
+      POSTGRES_PASSWORD: bookcat_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - bookcat_postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: bookcat_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - bookcat_redis_data:/data
+
+  # Dev-only inbox: catches every email the app sends. SMTP on 1025, web inbox on 8025.
+  mailpit:
+    image: axllent/mailpit
+    container_name: bookcat_mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  bookcat_postgres_data:
+  bookcat_redis_data:
