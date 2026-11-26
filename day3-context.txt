@@ -1,0 +1,619 @@
+﻿=== app\Models\Organizer.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Organizer extends Model
+{
+    public const STATUS_PENDING = 'pending_review';
+    public const STATUS_CHANGES_REQUESTED = 'changes_requested';
+    public const STATUS_APPROVED = 'approved';
+    public const STATUS_REJECTED = 'rejected';
+
+    // Review fields, origin and flags are NOT mass-assignable: only server-side
+    // admin actions may set them, never a request payload.
+    protected $fillable = ['business_name', 'slug', 'bio', 'logo_path', 'contact_phone'];
+
+    protected function casts(): array
+    {
+        return [
+            'reviewed_at' => 'datetime',
+            'flagged_at' => 'datetime',
+        ];
+    }
+
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(BusinessAccount::class, 'business_account_id');
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(OrganizerDocument::class);
+    }
+
+    public function isApproved(): bool
+    {
+        return $this->application_status === self::STATUS_APPROVED;
+    }
+}
+=== app\Models\OrganizerDocument.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class OrganizerDocument extends Model
+{
+    public const TYPE_GOVERNMENT_ID = 'government_id';
+    public const TYPE_BUSINESS_REGISTRATION = 'business_registration';
+    public const TYPE_VENUE_CONTRACT = 'venue_contract';
+    public const TYPE_BANK_DETAILS = 'bank_details';
+
+    // status and review_note are set only by admin review actions.
+    protected $fillable = ['type', 'path', 'original_name'];
+
+    public function organizer(): BelongsTo
+    {
+        return $this->belongsTo(Organizer::class);
+    }
+}
+=== app\Models\FloorPlan.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class FloorPlan extends Model
+{
+    public const KIND_TEMPLATE = 'template';
+    public const KIND_CUSTOM = 'custom';
+
+    public const STATUS_REQUESTED = 'requested';
+    public const STATUS_IN_PROGRESS = 'in_progress';
+    public const STATUS_READY = 'ready';
+
+    // venue, owner, kind, status and ready_* are set server-side only.
+    protected $fillable = ['name'];
+
+    protected function casts(): array
+    {
+        return ['ready_at' => 'datetime'];
+    }
+
+    public function venue(): BelongsTo
+    {
+        return $this->belongsTo(Venue::class);
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(Organizer::class, 'owner_organizer_id');
+    }
+
+    public function seats(): HasMany
+    {
+        return $this->hasMany(FloorPlanSeat::class);
+    }
+
+    public function isReady(): bool
+    {
+        return $this->status === self::STATUS_READY;
+    }
+
+    /**
+     * Floor plans an organizer may pick for an event: ready ones that are
+     * either library templates or that organizer's own custom builds.
+     * This is the ownership check from the roles matrix (section 0b) for floor plans.
+     */
+    public function scopeSelectableBy(Builder $query, Organizer $organizer): Builder
+    {
+        return $query->where('status', self::STATUS_READY)
+            ->where(function (Builder $q) use ($organizer) {
+                $q->whereNull('owner_organizer_id')
+                    ->orWhere('owner_organizer_id', $organizer->id);
+            });
+    }
+}
+=== app\Models\FloorPlanSeat.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class FloorPlanSeat extends Model
+{
+    public $timestamps = false;
+
+    protected $fillable = ['floor_plan_id', 'seat_key', 'section', 'row_label', 'seat_number'];
+
+    public function floorPlan(): BelongsTo
+    {
+        return $this->belongsTo(FloorPlan::class);
+    }
+
+    /**
+     * The one place seat keys are built, so the SVG tracer, API and Redis
+     * layer can never disagree. Example: makeKey('Orch', 'c', 12) => "ORCH-C-12"
+     */
+    public static function makeKey(string $section, ?string $row, string|int $number): string
+    {
+        $clean = fn ($value) => strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) $value));
+
+        return implode('-', array_filter(
+            [$clean($section), $clean($row ?? ''), $clean($number)],
+            fn ($part) => $part !== ''
+        ));
+    }
+}
+=== app\Models\EventFinancialTerms.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use RuntimeException;
+
+class EventFinancialTerms extends Model
+{
+    protected $table = 'event_financial_terms';
+
+    // Overrides are an admin action behind the override_financial_terms permission,
+    // so nothing here is mass-assignable.
+    protected $fillable = [];
+
+    protected function casts(): array
+    {
+        return [
+            'reserve_enabled' => 'boolean',
+            'overridden_at' => 'datetime',
+        ];
+    }
+
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(Event::class);
+    }
+
+    public static function defaultsFor(string $currency): array
+    {
+        $schedule = config("bookcat.fees.{$currency}");
+
+        if (! $schedule) {
+            throw new RuntimeException("No fee schedule configured for {$currency}.");
+        }
+
+        return $schedule;
+    }
+
+    /** Copy the platform defaults onto the event. Fully free events carry no fees at all. */
+    public static function createDefaultsFor(Event $event): self
+    {
+        $defaults = self::defaultsFor($event->currency);
+        $free = $event->is_free;
+
+        $terms = new self();
+        $terms->forceFill([
+            'event_id' => $event->id,
+            'creation_fee_cents' => $free ? 0 : $defaults['creation_fee_cents'],
+            'ticket_fee_flat_cents' => $free ? 0 : $defaults['ticket_fee_flat_cents'],
+            'ticket_fee_bps' => $free ? 0 : $defaults['ticket_fee_bps'],
+            'processing_fee_bps' => $free ? 0 : $defaults['processing_fee_bps'],
+            'minimum_charge_cents' => $free ? 0 : $defaults['minimum_charge_cents'],
+            'payout_delay_business_days' => $defaults['payout_delay_business_days'],
+        ])->save();
+
+        return $terms;
+    }
+}
+=== app\Models\Permission.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+
+class Permission extends Model
+{
+    protected $fillable = ['key', 'label'];
+
+    public function admins(): BelongsToMany
+    {
+        return $this->belongsToMany(BusinessAccount::class, 'admin_permission_grants', 'permission_id', 'admin_id')
+            ->withPivot('granted_by', 'granted_at');
+    }
+}
+=== config\bookcat.php ===
+<?php
+
+return [
+    // Default financial terms, copied onto each event when it is created.
+    // Money is in cents; percentages are basis points (250 = 2.5%).
+    // A currency with no schedule here cannot be used for new events until its
+    // fees are decided (open multi-currency question). Platform Settings (#46a)
+    // will later override these from the database.
+    'fees' => [
+        'CAD' => [
+            'creation_fee_cents' => 10000,      // CAD 100.00
+            'ticket_fee_flat_cents' => 150,     // CAD 1.50 per paid ticket
+            'ticket_fee_bps' => 250,            // 2.5%
+            'processing_fee_bps' => 300,        // 3%
+            'minimum_charge_cents' => 50000,    // CAD 500.00
+            'payout_delay_business_days' => 3,
+        ],
+    ],
+
+    // Seat holds. Minutes may be decimals so tests can use seconds.
+    // The window is clamped to the 10-20 minute band from the MVP scope;
+    // Platform Settings (#46a) will later override 'minutes' from the database.
+    'holds' => [
+        'minutes' => 15,
+        'min_minutes' => 10,
+        'max_minutes' => 20,
+        'payment_grace_minutes' => 5, // time guaranteed once the buyer presses Pay
+        'max_seats' => 8,             // per cart (the spec is silent, so this is my default)
+    ],
+
+    // 'fake' is for local development only; the app refuses to use it in production.
+    'payments' => [
+        'driver' => env('PAYMENTS_DRIVER', 'fake'),
+    ],
+];
+=== database\seeders\DemoEventSeeder.php ===
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\BusinessAccount;
+use App\Models\Event;
+use App\Models\EventFinancialTerms;
+use App\Models\FloorPlan;
+use App\Models\Organizer;
+use Illuminate\Database\Seeder;
+
+class DemoEventSeeder extends Seeder
+{
+    public function run(): void
+    {
+        if (Event::where('title', 'Demo Concert')->exists()) {
+            return;
+        }
+
+        $super = BusinessAccount::where('role', BusinessAccount::ROLE_SUPER_ADMIN)->firstOrFail();
+        $plan = FloorPlan::where('kind', FloorPlan::KIND_TEMPLATE)
+            ->where('status', FloorPlan::STATUS_READY)
+            ->firstOrFail();
+
+        $account = new BusinessAccount([
+            'name' => 'Demo Organizer',
+            'email' => 'organizer@bookcat.test',
+            'password' => 'password',
+        ]);
+        $account->forceFill(['role' => BusinessAccount::ROLE_ORGANIZER, 'status' => 'active'])->save();
+
+        $organizer = $account->organizer()->make(['business_name' => 'Demo Events Co.']);
+        $organizer->forceFill([
+            'origin' => 'sales_assisted',
+            'application_status' => Organizer::STATUS_APPROVED,
+            'reviewed_by' => $super->id,
+            'reviewed_at' => now(),
+        ])->save();
+
+        $event = new Event([
+            'title' => 'Demo Concert',
+            'description' => 'Seeded demo event for local development.',
+            'category' => 'Entertaining',
+            'starts_at' => now()->addMonths(2),
+            'currency' => 'CAD',
+            'is_free' => false,
+        ]);
+        $event->forceFill([
+            'organizer_id' => $organizer->id,
+            'created_by' => $account->id,
+            'floor_plan_id' => $plan->id,
+            'slug' => Event::generateSlug('Demo Concert'),
+        ])->save();
+
+        EventFinancialTerms::createDefaultsFor($event);
+
+        // Snapshot and price while the event is still a draft
+        $event->snapshotSeats();
+        $event->seats()->where('section', 'ORCH')->update(['price_cents' => 5000]);
+        $event->seats()->where('section', 'BALC')->update(['price_cents' => 3000]);
+
+        // Walk it through every gate
+        $event->forceFill([
+            'review_status' => Event::REVIEW_APPROVED,
+            'reviewed_by' => $super->id,
+            'reviewed_at' => now(),
+            'creation_fee_paid_at' => now(),
+            'activated_at' => now(),
+            'activated_by' => $super->id,
+            'made_public_at' => now(),
+            'made_bookable_at' => now(),
+        ])->save();
+    }
+}
+=== app\Services\FeeCalculator.php ===
+<?php
+
+namespace App\Services;
+
+use App\Models\Coupon;
+use App\Models\EventFinancialTerms;
+use App\Models\Ticket;
+
+class FeeCalculator
+{
+    /** Integer basis-point math, rounded half up: 2.5% of 4000 cents is 100. */
+    public static function percentOf(int $cents, int $bps): int
+    {
+        return intdiv($cents * $bps + 5000, 10000);
+    }
+
+    /** Discount for ONE ticket (coupons apply per ticket), never more than its price. */
+    public static function discountFor(?Coupon $coupon, int $listPriceCents): int
+    {
+        if ($coupon === null) {
+            return 0;
+        }
+
+        $discount = $coupon->discount_type === Coupon::TYPE_PERCENT
+            ? self::percentOf($listPriceCents, (int) $coupon->discount_value)
+            : (int) $coupon->discount_value;
+
+        return min($discount, $listPriceCents);
+    }
+
+    /**
+     * Fees Bookcat deducts from the organizer for one ticket, computed on the price
+     * actually paid. Fully free events carry zero rates, so every fee is 0 there.
+     *
+     * @return array{bookcat_fee_cents:int, processing_fee_cents:int}
+     */
+    public static function feesFor(EventFinancialTerms $terms, string $kind, int $pricePaidCents): array
+    {
+        $flat = (int) $terms->ticket_fee_flat_cents;
+
+        // Comp tickets: only the flat portion, and nothing was charged to process.
+        if ($kind === Ticket::KIND_COMP) {
+            return ['bookcat_fee_cents' => $flat, 'processing_fee_cents' => 0];
+        }
+
+        return [
+            'bookcat_fee_cents' => $flat + self::percentOf($pricePaidCents, (int) $terms->ticket_fee_bps),
+            'processing_fee_cents' => self::percentOf($pricePaidCents, (int) $terms->processing_fee_bps),
+        ];
+    }
+}
+=== C:\Users\User\bookcat\backend\database\migrations\2026_09_28_162505_create_permissions_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('permissions', function (Blueprint $table) {
+            $table->id();
+            $table->string('key')->unique();
+            $table->string('label');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('permissions');
+    }
+};
+=== C:\Users\User\bookcat\backend\database\migrations\2026_10_16_011547_create_organizers_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('organizers', function (Blueprint $table) {
+            $table->id();
+
+            // One login per organizer for v1, so this is one-to-one.
+            $table->foreignId('business_account_id')->unique()->constrained('business_accounts')->cascadeOnDelete();
+
+            // Public profile (not visible until approved)
+            $table->string('business_name');
+            $table->string('slug')->nullable()->unique();
+            $table->text('bio')->nullable();
+            $table->string('logo_path')->nullable();
+            $table->string('contact_phone')->nullable();
+
+            // How the account came to exist
+            $table->string('origin')->default('self_service'); // self_service | sales_assisted | pre_approved
+
+            // Application review lifecycle
+            $table->string('application_status')->default('pending_review')->index(); // pending_review | changes_requested | approved | rejected
+            $table->text('review_notes')->nullable();
+            $table->foreignId('reviewed_by')->nullable()->constrained('business_accounts')->nullOnDelete();
+            $table->timestamp('reviewed_at')->nullable();
+
+            // Admin "flag/pause" (final suspension is Super Admin and lives on business_accounts.status)
+            $table->foreignId('flagged_by')->nullable()->constrained('business_accounts')->nullOnDelete();
+            $table->timestamp('flagged_at')->nullable();
+            $table->text('flag_reason')->nullable();
+
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('organizers');
+    }
+};
+=== C:\Users\User\bookcat\backend\database\migrations\2026_10_16_013212_create_floor_plans_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('floor_plans', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('venue_id')->constrained('venues')->cascadeOnDelete();
+
+            // null = library template usable by any organizer; set = custom build requested by that organizer
+            $table->foreignId('owner_organizer_id')->nullable()->constrained('organizers');
+
+            $table->string('name');
+            $table->string('kind');                                   // template | custom
+            $table->string('status')->default('requested')->index();  // requested | in_progress | ready
+
+            $table->string('blueprint_path')->nullable();  // organizer's uploaded blueprint (custom only)
+            $table->string('svg_path')->nullable();        // the interactive map once built
+
+            // "Mark floor plan ready" action; this is what unlocks the organizer's Bookable toggle
+            $table->foreignId('ready_by')->nullable()->constrained('business_accounts')->nullOnDelete();
+            $table->timestamp('ready_at')->nullable();
+
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('floor_plans');
+    }
+};
+=== C:\Users\User\bookcat\backend\database\migrations\2026_10_16_015250_create_event_financial_terms_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('event_financial_terms', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('event_id')->unique()->constrained('events')->cascadeOnDelete();
+
+            // Concrete values copied from the defaults at event creation, never "null = use default",
+            // so changing platform defaults later can't silently alter an existing event's deal.
+            $table->unsignedInteger('creation_fee_cents');
+            $table->unsignedInteger('ticket_fee_flat_cents');
+            $table->unsignedSmallInteger('ticket_fee_bps');
+            $table->unsignedSmallInteger('processing_fee_bps');
+            $table->unsignedInteger('minimum_charge_cents');
+            $table->boolean('reserve_enabled')->default(false);
+            $table->unsignedSmallInteger('reserve_bps')->nullable();
+            $table->text('reserve_notes')->nullable();
+            $table->unsignedSmallInteger('payout_delay_business_days');
+
+            // Audit trail for the override_financial_terms permission
+            $table->foreignId('overridden_by')->nullable()->constrained('business_accounts')->nullOnDelete();
+            $table->timestamp('overridden_at')->nullable();
+
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('event_financial_terms');
+    }
+};
+=== C:\Users\User\bookcat\backend\database\migrations\2026_10_16_015252_create_event_seats_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('event_seats', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('event_id')->constrained('events')->cascadeOnDelete();
+            $table->foreignId('floor_plan_seat_id')->nullable()->constrained('floor_plan_seats')->nullOnDelete();
+
+            // Copied from the floor plan so later floor plan edits can't touch this event.
+            $table->string('seat_key', 64);
+            $table->string('section', 64);
+            $table->string('row_label', 16)->nullable();
+            $table->string('seat_number', 16);
+
+            $table->unsignedInteger('price_cents')->nullable(); // null = not priced yet, 0 = free
+            $table->string('status')->default('available');     // available | blocked | sold
+            $table->string('block_note')->nullable();             // organizer hold note (#31)
+            $table->timestamps();
+
+            $table->unique(['event_id', 'seat_key']);
+            $table->index(['event_id', 'status']);
+            $table->index(['event_id', 'section']);
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('event_seats');
+    }
+};

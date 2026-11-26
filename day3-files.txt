@@ -1,0 +1,352 @@
+﻿=== database\seeders\PermissionSeeder.php ===
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\Permission;
+use Illuminate\Database\Seeder;
+
+class PermissionSeeder extends Seeder
+{
+    public function run(): void
+    {
+        $keys = [
+            'manage_platform_settings' => 'Manage platform settings',
+            'create_organizer' => 'Create organizer',
+            'approve_organizer' => 'Approve organizer',
+            'create_preapproved_organizer' => 'Create pre-approved organizer',
+            'suspend_organizer' => 'Suspend organizer (flag/pause)',
+            'create_event_directly' => 'Create event directly',
+            'approve_event' => 'Approve event',
+            'activate_event' => 'Activate event',
+            'mark_floor_plan_ready' => 'Mark floor plan ready',
+            'upload_blueprint_floor_map' => 'Upload blueprint floor map',
+            'create_venue' => 'Create a new venue',
+            'review_venue_request' => 'Review organizer venue requests',
+            'freeze_event_booking' => 'Freeze event booking',
+            'reactivate_event' => 'Reactivate frozen event',
+            'override_financial_terms' => 'Override fees / reserve / payout terms',
+            'record_manual_payout' => 'Record manual payout',
+            'book_ticket_admin_override' => 'Book a ticket with admin override',
+            'create_coupon' => 'Create coupons',
+        ];
+
+        foreach ($keys as $key => $label) {
+            Permission::updateOrCreate(['key' => $key], ['label' => $label]);
+        }
+    }
+}
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Events\EventResource.php ===
+<?php
+
+namespace App\Filament\Resources\Events;
+
+use App\Filament\Resources\Events\Pages\CreateEvent;
+use App\Filament\Resources\Events\Pages\EditEvent;
+use App\Filament\Resources\Events\Pages\ListEvents;
+use App\Filament\Resources\Events\Schemas\EventForm;
+use App\Filament\Resources\Events\Tables\EventsTable;
+use App\Models\Event;
+use BackedEnum;
+use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Table;
+
+class EventResource extends Resource
+{
+    protected static ?string $model = Event::class;
+
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    protected static ?string $recordTitleAttribute = 'business_name';
+
+    public static function form(Schema $schema): Schema
+    {
+        return EventForm::configure($schema);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return EventsTable::configure($table);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            //
+        ];
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => ListEvents::route('/'),
+            'create' => CreateEvent::route('/create'),
+            'edit' => EditEvent::route('/{record}/edit'),
+        ];
+    }
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Events\Pages\CreateEvent.php ===
+<?php
+
+namespace App\Filament\Resources\Events\Pages;
+
+use App\Filament\Resources\Events\EventResource;
+use Filament\Resources\Pages\CreateRecord;
+
+class CreateEvent extends CreateRecord
+{
+    protected static string $resource = EventResource::class;
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Events\Pages\EditEvent.php ===
+<?php
+
+namespace App\Filament\Resources\Events\Pages;
+
+use App\Filament\Resources\Events\EventResource;
+use Filament\Actions\DeleteAction;
+use Filament\Resources\Pages\EditRecord;
+
+class EditEvent extends EditRecord
+{
+    protected static string $resource = EventResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            DeleteAction::make(),
+        ];
+    }
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Events\Pages\ListEvents.php ===
+<?php
+
+namespace App\Filament\Resources\Events\Pages;
+
+use App\Filament\Resources\Events\EventResource;
+use Filament\Actions\CreateAction;
+use Filament\Resources\Pages\ListRecords;
+
+class ListEvents extends ListRecords
+{
+    protected static string $resource = EventResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            CreateAction::make(),
+        ];
+    }
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Events\Schemas\EventForm.php ===
+<?php
+
+namespace App\Filament\Resources\Events\Schemas;
+
+use Filament\Schemas\Schema;
+
+class EventForm
+{
+    public static function configure(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                //
+            ]);
+    }
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Events\Tables\EventsTable.php ===
+<?php
+
+namespace App\Filament\Resources\Events\Tables;
+
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Tables\Table;
+
+class EventsTable
+{
+    public static function configure(Table $table): Table
+    {
+        return $table
+            ->columns([
+                //
+            ])
+            ->filters([
+                //
+            ])
+            ->recordActions([
+                EditAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
+                ]),
+            ]);
+    }
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Organizers\OrganizerResource.php ===
+<?php
+
+namespace App\Filament\Resources\Organizers;
+
+use App\Filament\Resources\Organizers\Pages\CreateOrganizer;
+use App\Filament\Resources\Organizers\Pages\EditOrganizer;
+use App\Filament\Resources\Organizers\Pages\ListOrganizers;
+use App\Filament\Resources\Organizers\Schemas\OrganizerForm;
+use App\Filament\Resources\Organizers\Tables\OrganizersTable;
+use App\Models\Organizer;
+use BackedEnum;
+use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Table;
+
+class OrganizerResource extends Resource
+{
+    protected static ?string $model = Organizer::class;
+
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    protected static ?string $recordTitleAttribute = 'business_name';
+
+    public static function form(Schema $schema): Schema
+    {
+        return OrganizerForm::configure($schema);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return OrganizersTable::configure($table);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            //
+        ];
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => ListOrganizers::route('/'),
+            'create' => CreateOrganizer::route('/create'),
+            'edit' => EditOrganizer::route('/{record}/edit'),
+        ];
+    }
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Organizers\Pages\CreateOrganizer.php ===
+<?php
+
+namespace App\Filament\Resources\Organizers\Pages;
+
+use App\Filament\Resources\Organizers\OrganizerResource;
+use Filament\Resources\Pages\CreateRecord;
+
+class CreateOrganizer extends CreateRecord
+{
+    protected static string $resource = OrganizerResource::class;
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Organizers\Pages\EditOrganizer.php ===
+<?php
+
+namespace App\Filament\Resources\Organizers\Pages;
+
+use App\Filament\Resources\Organizers\OrganizerResource;
+use Filament\Actions\DeleteAction;
+use Filament\Resources\Pages\EditRecord;
+
+class EditOrganizer extends EditRecord
+{
+    protected static string $resource = OrganizerResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            DeleteAction::make(),
+        ];
+    }
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Organizers\Pages\ListOrganizers.php ===
+<?php
+
+namespace App\Filament\Resources\Organizers\Pages;
+
+use App\Filament\Resources\Organizers\OrganizerResource;
+use Filament\Actions\CreateAction;
+use Filament\Resources\Pages\ListRecords;
+
+class ListOrganizers extends ListRecords
+{
+    protected static string $resource = OrganizerResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            CreateAction::make(),
+        ];
+    }
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Organizers\Schemas\OrganizerForm.php ===
+<?php
+
+namespace App\Filament\Resources\Organizers\Schemas;
+
+use Filament\Schemas\Schema;
+
+class OrganizerForm
+{
+    public static function configure(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                //
+            ]);
+    }
+}
+
+=== C:\Users\User\bookcat\backend\app\Filament\Resources\Organizers\Tables\OrganizersTable.php ===
+<?php
+
+namespace App\Filament\Resources\Organizers\Tables;
+
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Tables\Table;
+
+class OrganizersTable
+{
+    public static function configure(Table $table): Table
+    {
+        return $table
+            ->columns([
+                //
+            ])
+            ->filters([
+                //
+            ])
+            ->recordActions([
+                EditAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
+                ]),
+            ]);
+    }
+}
+

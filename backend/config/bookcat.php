@@ -13,7 +13,7 @@ return [
             'ticket_fee_bps' => 250,            // 2.5%
             'processing_fee_bps' => 300,        // 3%
             'minimum_charge_cents' => 50000,    // CAD 500.00
-            'payout_delay_business_days' => 3,
+            'payout_delay_business_days' => 5,
         ],
     ],
 
