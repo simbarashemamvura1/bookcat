@@ -190,3 +190,12 @@ update that doc and link back here.
   open for local development), serve it over TLS, and raise the open-file limit.
 - Still to announce when built: refunds that free a seat again, organizer seat blocks, and
   sales state changes (freeze, sold out). Each one is a single call on SeatBroadcaster.
+  
+  ## 2026-11-25: Refunds, tax, currency, payouts (pilot)
+
+- **Refunds:** issued by admins only. A buyer may cancel for a full refund within 48 hours of purchase if the event is at least 7 days away. Otherwise the organizer's per-event refund policy applies. Event cancelled by the organizer: full ticket-price refund. Card processing fees are not recoverable from Stripe, so the organizer bears them; Bookcat returns its own fee. A refunded ticket frees its seat for resale. No self-service cancel button in the pilot.
+- **Tax:** added on top of the ticket price at checkout, calculated per ticket on the price paid (after coupons), with the breakdown shown at checkout, on the order page and in the email. Rates come from a table by province of the event. The accountant must confirm which taxes apply to admissions, who is registered to collect them, and whether the organizer's registration number appears on the receipt. No US tax calculation in the pilot (revisit with Stripe Tax).
+- **Currency:** CAD and USD are both selectable per event. USD fee schedule (proposed): flat fee USD 1.25 + 2.5%, processing 3%, minimum charge USD 400 per event. The Stripe account must be able to take USD.
+- **Payouts:** manual, by an admin. A payout statement per event and currency shows gross, discounts, refunds, tax, fees and net. Paid 5 business days after the event ends. The admin records date, method and reference. Stripe Connect is deferred.
+- **Bookable requires Public:** an event cannot be made Bookable unless it is Public.
+- **Zero-price tickets:** a ticket with a price of 0 (for example a 100% coupon) pays no flat fee.
