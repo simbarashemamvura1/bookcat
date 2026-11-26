@@ -14,4 +14,13 @@ class EditOrganizer extends EditRecord
     {
         return [];
     }
+
+    // The read-only Review box shows values that are not columns on the organizer itself.
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        $data['status_label'] = str($this->record->application_status)->replace('_', ' ')->title()->toString();
+        $data['login_email'] = $this->record->account?->email;
+
+        return $data;
+    }
 }

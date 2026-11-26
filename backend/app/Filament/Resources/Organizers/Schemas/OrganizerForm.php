@@ -28,12 +28,13 @@ class OrganizerForm
                     ->description('The organizer signs in with this account. Share the temporary password with them directly.')
                     ->visibleOn('create')
                     ->schema([
-                        TextInput::make('account_name')->label('Contact name')->required()->maxLength(255),
+                        TextInput::make('account_name')->label('Contact name')->required()->maxLength(255)->autocomplete(false),
                         TextInput::make('account_email')
                             ->label('Email')
                             ->email()
                             ->required()
                             ->maxLength(190)
+                            ->autocomplete(false)
                             ->rule(fn (): Closure => function (string $attribute, mixed $value, Closure $fail): void {
                                 if (BusinessAccount::whereRaw('lower(email) = ?', [strtolower(trim((string) $value))])->exists()) {
                                     $fail('That email is already used by another account.');
@@ -45,7 +46,8 @@ class OrganizerForm
                             ->revealable()
                             ->required()
                             ->minLength(12)
-                            ->maxLength(100),
+                            ->maxLength(100)
+                            ->autocomplete('new-password'),
                         Select::make('origin')
                             ->label('How this organizer joins')
                             ->options([
@@ -60,8 +62,8 @@ class OrganizerForm
                 Section::make('Review')
                     ->visibleOn('edit')
                     ->schema([
-                        TextInput::make('application_status')->label('Status')->disabled()->dehydrated(false),
-                        TextInput::make('account.email')->label('Login email')->disabled()->dehydrated(false),
+                        TextInput::make('status_label')->label('Status')->disabled()->dehydrated(false),
+                        TextInput::make('login_email')->label('Login email')->disabled()->dehydrated(false),
                         Textarea::make('review_notes')->label('Review notes')->disabled()->dehydrated(false)->columnSpanFull(),
                         Textarea::make('flag_reason')->label('Flag reason')->disabled()->dehydrated(false)->columnSpanFull(),
                     ])
