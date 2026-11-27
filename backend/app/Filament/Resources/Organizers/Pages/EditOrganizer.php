@@ -23,4 +23,10 @@ class EditOrganizer extends EditRecord
 
         return $data;
     }
+
+    // After saving, go back to the Organizers list.
+    protected function getRedirectUrl(): string
+    {
+        return OrganizerResource::getUrl('index');
+    }
 }

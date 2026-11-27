@@ -1,0 +1,98 @@
+﻿=== PERMISSION KEYS ===
+activate_event
+approve_event
+approve_organizer
+book_ticket_admin_override
+create_coupon
+create_event_directly
+create_organizer
+create_preapproved_organizer
+create_venue
+freeze_event_booking
+manage_platform_settings
+mark_floor_plan_ready
+override_financial_terms
+reactivate_event
+record_manual_payout
+review_venue_request
+suspend_organizer
+upload_blueprint_floor_map
+=== app\Models\Venue.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Venue extends Model
+{
+    public const STATUS_PENDING = 'pending_review';
+    public const STATUS_APPROVED = 'approved';
+    public const STATUS_REJECTED = 'rejected';
+
+    // owner, creator and status are set server-side only.
+    protected $fillable = ['name', 'address_line', 'city', 'region', 'country', 'postal_code', 'timezone'];
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(Organizer::class, 'owner_organizer_id');
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(BusinessAccount::class, 'created_by');
+    }
+
+    public function floorPlans(): HasMany
+    {
+        return $this->hasMany(FloorPlan::class);
+    }
+
+    public function isPlatformWide(): bool
+    {
+        return $this->owner_organizer_id === null;
+    }
+}
+=== 2026_10_16_013210_create_venues_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('venues', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('address_line');
+            $table->string('city');
+            $table->string('region');            // province / state
+            $table->string('country', 2);        // CA | US
+            $table->string('postal_code')->nullable();
+            $table->string('timezone');          // IANA zone; needed because launch spans CA + US
+
+            // null = platform-wide venue (Admin-created); set = requested by and private to one organizer
+            $table->foreignId('owner_organizer_id')->nullable()->constrained('organizers');
+            $table->foreignId('created_by')->constrained('business_accounts');
+            $table->string('status')->default('pending_review')->index(); // pending_review | approved | rejected
+
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('venues');
+    }
+};
